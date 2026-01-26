@@ -17,6 +17,7 @@ import android.media.SoundPool
 import androidx.core.app.NotificationCompat
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import fi.iki.elonen.NanoHTTPD
 import java.io.BufferedInputStream
 import java.io.IOException
@@ -36,9 +37,8 @@ class NotifierService : Service() {
     private lateinit var soundPool: SoundPool
     private var soundId: Int = 0
 
-    // --- Rate limiting ---
     private var lastNotificationTime = 0L
-    private val rateLimitMillis = 3000L // 3 seconds
+    private val rateLimitMillis = 3000L 
     private val pendingMessages = mutableListOf<JsonObject>()
 
     companion object {
@@ -55,15 +55,15 @@ class NotifierService : Service() {
         createNotificationChannels()
         startForeground(1, createNotification())
 
-        // --- SoundPool ---
         val attrs = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
         soundPool = SoundPool.Builder().setMaxStreams(1).setAudioAttributes(attrs).build()
+        
+        // Ensure R.raw.notify exists or this will return 0
         soundId = soundPool.load(this, R.raw.notify, 1)
 
-        // --- HTTP Server ---
         try {
             httpServer = MyHttpServer(PORT, this)
             httpServer.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
@@ -74,7 +74,7 @@ class NotifierService : Service() {
     }
 
     override fun onDestroy() {
-        httpServer.stop()
+        if (::httpServer.isInitialized) httpServer.stop()
         removeOverlay()
         executor.shutdown()
         soundPool.release()
@@ -83,7 +83,7 @@ class NotifierService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    /* ---------------- Notification ---------------- */
+    /* ---------------- Notification Logic ---------------- */
 
     fun showNotification(
         title: String,
@@ -103,7 +103,6 @@ class NotifierService : Service() {
                 return@post
             }
 
-            // --- Rate limiting ---
             val now = System.currentTimeMillis()
             val withinRateLimit = now - lastNotificationTime < rateLimitMillis
             lastNotificationTime = now
@@ -121,10 +120,7 @@ class NotifierService : Service() {
             }
 
             if (withinRateLimit) {
-                // Merge message
                 pendingMessages.add(json)
-                Log.d(TAG, "Rate limit active, merging message")
-                // Schedule merged overlay after rateLimitMillis
                 Handler(Looper.getMainLooper()).postDelayed({
                     if (pendingMessages.isNotEmpty()) {
                         val merged = mergeMessages(pendingMessages)
@@ -140,59 +136,46 @@ class NotifierService : Service() {
 
     private fun mergeMessages(messages: List<JsonObject>): JsonObject {
         val merged = JsonObject()
-        merged.addProperty("title", messages.first().get("title")?.asString ?: "Notification")
+        merged.addProperty("title", messages.firstOrNull()?.get("title")?.asString ?: "Notification")
         merged.addProperty("message", messages.joinToString("\n") { it.get("message")?.asString ?: "" })
-        merged.addProperty("app", messages.first().get("app")?.asString ?: "")
-        merged.addProperty("duration", messages.first().get("duration")?.asLong ?: 10)
-        merged.addProperty("position", messages.first().get("position")?.asInt ?: -1)
+        merged.addProperty("app", messages.firstOrNull()?.get("app")?.asString ?: "")
+        merged.addProperty("duration", 10L)
         merged.addProperty("is_group", true)
-        merged.addProperty("group_name", messages.first().get("group_name")?.asString)
         return merged
     }
 
     private fun displayOverlay(json: JsonObject) {
         removeOverlay()
+        if (soundId != 0) soundPool.play(soundId, 1f, 1f, 1, 0, 1f)
 
-        // --- Play sound ---
-        soundPool.play(soundId, 1f, 1f, 1, 0, 1f)
-
-        val layout = if (json.get("is_group")?.asBoolean == true && json.get("group_name")?.asString != null) {
+        val isGroup = json.get("is_group")?.asBoolean == true
+        val layout = if (isGroup && json.has("group_name")) {
             createGroupNotificationView(
-                json.get("title")?.asString ?: "Notification",
+                json.get("title")?.asString ?: "",
                 json.get("message")?.asString ?: "",
                 json.get("app")?.asString ?: "",
-                json.get("group_name")?.asString ?: "",
+                json.get("group_name")?.asString ?: "Group",
                 json.get("sender")?.asString,
                 json.get("media_url")?.asString
             )
         } else {
             createBasicNotificationView(
-                json.get("title")?.asString ?: "Notification",
+                json.get("title")?.asString ?: "",
                 json.get("message")?.asString ?: "",
                 json.get("app")?.asString ?: "",
                 json.get("media_url")?.asString
             )
         }
 
-        val smartPosition = resolvePosition(
-            json.get("app")?.asString ?: "",
-            json.get("is_group")?.asBoolean ?: false,
-            0,
-            json.get("position")?.asInt ?: -1
-        )
-
+        val pos = json.get("position")?.asInt ?: -1
+        val smartPosition = resolvePosition(json.get("app")?.asString ?: "", isGroup, 0, pos)
         showOverlay(layout, smartPosition, json.get("duration")?.asLong ?: 10)
     }
 
-    /* ---------------- Smart Position ---------------- */
-
-    private fun resolvePosition(app: String, isGroup: Boolean, priority: Int, requestedPosition: Int): Int {
-        if (requestedPosition >= 0) return requestedPosition
-        if (priority > 0) return 4
+    private fun resolvePosition(app: String, isGroup: Boolean, priority: Int, reqPos: Int): Int {
+        if (reqPos >= 0) return reqPos
         return when (app.lowercase()) {
-            "messenger", "telegram", "whatsapp", "signal", "discord" -> if (isGroup) 4 else 0
-            "phone", "dialer" -> 4
-            "system", "android" -> 5
+            "messenger", "whatsapp" -> if (isGroup) 4 else 0
             else -> 2
         }
     }
@@ -201,57 +184,30 @@ class NotifierService : Service() {
 
     private fun createBasicNotificationView(title: String, message: String, app: String, mediaUrl: String?): View {
         val layout = LayoutInflater.from(this).inflate(R.layout.notification_basic, null)
-        layout.findViewById<TextView>(R.id.tv_app_icon)?.text = getAppIcon(app)
         layout.findViewById<TextView>(R.id.tv_app_name)?.text = app.ifEmpty { "Notification" }
         layout.findViewById<TextView>(R.id.tv_title)?.text = title
         layout.findViewById<TextView>(R.id.tv_message)?.text = message
-        layout.findViewById<TextView>(R.id.tv_time)?.text =
-            SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+        layout.findViewById<TextView>(R.id.tv_time)?.text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
 
         mediaUrl?.let { url ->
-            val imageView = layout.findViewById<ImageView>(R.id.iv_media)
-            imageView?.visibility = View.VISIBLE
+            val iv = layout.findViewById<ImageView>(R.id.iv_media)
             executor.execute {
-                try {
-                    val bitmap = downloadImage(url)
-                    Handler(Looper.getMainLooper()).post { imageView.setImageBitmap(bitmap) }
-                } catch (_: Exception) {}
+                val bmp = downloadImage(url)
+                Handler(Looper.getMainLooper()).post { iv?.setImageBitmap(bmp); iv?.visibility = View.VISIBLE }
             }
         }
-
         return layout
     }
 
     private fun createGroupNotificationView(title: String, message: String, app: String, groupName: String, sender: String?, mediaUrl: String?): View {
         val layout = LayoutInflater.from(this).inflate(R.layout.notification_group, null)
         layout.findViewById<TextView>(R.id.tv_group_name)?.text = groupName
-
-        val messagesContainer = layout.findViewById<LinearLayout>(R.id.messages_container)
-        val messageItem = LayoutInflater.from(this).inflate(R.layout.item_group_message, messagesContainer, false)
-        sender?.let { messageItem.findViewById<TextView>(R.id.tv_sender)?.apply { text = it; visibility = View.VISIBLE } }
-        messageItem.findViewById<TextView>(R.id.tv_message)?.text = message
-        messageItem.findViewById<TextView>(R.id.tv_time)?.text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-        messagesContainer?.addView(messageItem)
-
-        mediaUrl?.let { url ->
-            val imageView = messageItem.findViewById<ImageView>(R.id.iv_media)
-            imageView?.visibility = View.VISIBLE
-            executor.execute {
-                try {
-                    val bitmap = downloadImage(url)
-                    Handler(Looper.getMainLooper()).post { imageView.setImageBitmap(bitmap) }
-                } catch (_: Exception) {}
-            }
-        }
-
+        val container = layout.findViewById<LinearLayout>(R.id.messages_container)
+        val item = LayoutInflater.from(this).inflate(R.layout.item_group_message, container, false)
+        item.findViewById<TextView>(R.id.tv_sender)?.text = sender ?: "System"
+        item.findViewById<TextView>(R.id.tv_message)?.text = message
+        container?.addView(item)
         return layout
-    }
-
-    private fun getAppIcon(app: String): String = when (app.lowercase()) {
-        "messenger" -> "💙"
-        "telegram" -> "📱"
-        "discord" -> "🎮"
-        else -> "📺"
     }
 
     private fun showOverlay(view: View, position: Int, duration: Long) {
@@ -259,28 +215,22 @@ class NotifierService : Service() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
             PixelFormat.TRANSLUCENT
-        )
-
-        val dm = DisplayMetrics()
-        windowManager.defaultDisplay.getRealMetrics(dm)
-
-        params.gravity = when (position) {
-            0 -> Gravity.TOP or Gravity.END
-            1 -> Gravity.TOP or Gravity.START
-            2 -> Gravity.BOTTOM or Gravity.END
-            3 -> Gravity.BOTTOM or Gravity.START
-            4 -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            5 -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            else -> Gravity.TOP or Gravity.END
+        ).apply {
+            gravity = when (position) {
+                0 -> Gravity.TOP or Gravity.END
+                2 -> Gravity.BOTTOM or Gravity.END
+                4 -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                else -> Gravity.TOP or Gravity.END
+            }
         }
 
-        windowManager.addView(view, params)
-        overlayView = view
-        view.postDelayed({ removeOverlay() }, duration * 1000)
+        try {
+            windowManager.addView(view, params)
+            overlayView = view
+            Handler(Looper.getMainLooper()).postDelayed({ removeOverlay() }, duration * 1000)
+        } catch (e: Exception) { Log.e(TAG, "Error adding overlay", e) }
     }
 
     private fun removeOverlay() {
@@ -288,62 +238,52 @@ class NotifierService : Service() {
         overlayView = null
     }
 
-    private fun canDrawOverlays(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
-    private fun downloadImage(url: String): Bitmap? = try { BufferedInputStream(URL(url).openStream()).use { BitmapFactory.decodeStream(it) } } catch (_: Exception) { null }
+    private fun canDrawOverlays(): Boolean = Settings.canDrawOverlays(this)
+    private fun downloadImage(url: String): Bitmap? = try { URL(url).openStream().use { BitmapFactory.decodeStream(it) } } catch (_: Exception) { null }
 
-    /* ---------------- HTTP Server ---------------- */
+    /* ---------------- HTTP Server (FIXED) ---------------- */
 
     inner class MyHttpServer(port: Int, service: NotifierService) : NanoHTTPD(port) {
         private val ref = WeakReference(service)
         private val gson = Gson()
 
         override fun serve(session: IHTTPSession): Response {
-            return when (session.uri) {
-                "/health" -> newFixedLengthResponse("OK")
-                "/notify" -> handleNotify(session)
-                else -> newFixedLengthResponse("Invalid endpoint")
+            return try {
+                if (session.uri == "/notify" && session.method == Method.POST) {
+                    val files = HashMap<String, String>()
+                    session.parseBody(files)
+                    val rawBody = files["postData"] ?: return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing Body")
+
+                    val json = JsonParser.parseString(rawBody).asJsonObject
+                    ref.get()?.showNotification(
+                        title = json.get("title")?.asString ?: "Notification",
+                        message = json.get("message")?.asString ?: "",
+                        app = json.get("app")?.asString ?: "Phone",
+                        duration = json.get("duration")?.asLong ?: 10,
+                        position = json.get("position")?.asInt ?: -1,
+                        isGroup = json.get("is_group")?.asBoolean ?: false,
+                        groupName = json.get("group_name")?.asString,
+                        sender = json.get("sender")?.asString,
+                        mediaUrl = json.get("media_url")?.asString
+                    )
+                    newFixedLengthResponse(Response.Status.OK, "application/json", "{\"status\":\"ok\"}")
+                } else {
+                    newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Server Error", e)
+                newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", e.message)
             }
         }
-
-        private fun handleNotify(session: IHTTPSession): Response {
-            if (session.method != Method.POST) return newFixedLengthResponse("POST required")
-            val files = HashMap<String, String>()
-            session.parseBody(files)
-            val json = gson.fromJson(files["postData"], JsonObject::class.java)
-
-            ref.get()?.showNotification(
-                title = json["title"]?.asString ?: "Notification",
-                message = json["message"]?.asString ?: "",
-                app = json["app"]?.asString ?: "",
-                duration = json["duration"]?.asLong ?: 10,
-                position = json["position"]?.asInt ?: -1,
-                priority = json["priority"]?.asInt ?: 0,
-                isGroup = json["is_group"]?.asBoolean ?: false,
-                groupName = json["group_name"]?.asString,
-                sender = json["sender"]?.asString,
-                mediaUrl = json["media_url"]?.asString
-            )
-            return newFixedLengthResponse("""{"status":"ok"}""")
-        }
     }
-
-    /* ---------------- Notification Channel ---------------- */
 
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val manager = getSystemService(NotificationManager::class.java)
-            val silentChannel = NotificationChannel(
-                CHANNEL_ID,
-                "TV Overlay Service",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply { setSound(null, null); setShowBadge(false) }
-            manager.createNotificationChannel(silentChannel)
+            val chan = NotificationChannel(CHANNEL_ID, "TV Overlay", NotificationManager.IMPORTANCE_LOW)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(chan)
         }
     }
 
-    private fun createNotification(): Notification =
-        NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("TV Notifier Active")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .build()
+    private fun createNotification(): Notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        .setContentTitle("TV Notifier Active").setSmallIcon(android.R.drawable.ic_dialog_info).build()
 }
