@@ -1,10 +1,9 @@
 package com.example.tvnotif
+
 import android.content.Context
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import okhttp3.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.IOException
 
@@ -18,30 +17,32 @@ class NotifierListenerService : NotificationListenerService() {
         val tvIp = prefs.getString("tvIp", "") ?: return
         if (tvIp.isEmpty()) return
 
-        // Load selected apps dynamically
-        val allowedApps = prefs.all.filter { it.value is Boolean && it.value as Boolean }.keys
-        if (sbn.packageName !in allowedApps) return
+        // --- FILTERING ---
+        // If you want to test EVERY notification, comment out the next 2 lines
+        val isAllowed = prefs.getBoolean(sbn.packageName, false)
+        if (!isAllowed) return 
 
-        val title = sbn.notification.extras.getString("android.title") ?: "Notification"
+        val title = sbn.notification.extras.getString("android.title") ?: "New Alert"
         val text = sbn.notification.extras.getCharSequence("android.text")?.toString() ?: ""
 
-        sendToTV(tvIp, title, text)
+        sendToTV(tvIp, title, text, sbn.packageName)
     }
 
-    private fun sendToTV(tvIp: String, title: String, message: String) {
+    private fun sendToTV(tvIp: String, title: String, message: String, appPkg: String) {
         val json = JSONObject().apply {
             put("title", title)
             put("message", message)
-            put("duration", 5)
-            put("position", 0)
+            put("app", appPkg)
+            put("duration", 8)
         }
 
-        val body = json.toString()
-            .toRequestBody("application/json; charset=utf-8".toMediaType())
+        val formBody = FormBody.Builder()
+            .add("postData", json.toString())
+            .build()
 
         val request = Request.Builder()
             .url("http://$tvIp:7979/notify")
-            .post(body)
+            .post(formBody)
             .build()
 
         client.newCall(request).enqueue(object : Callback {
