@@ -1,53 +1,54 @@
 package com.example.tvnotif
 
-import android.content.Context
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.util.Log
 import okhttp3.*
-import org.json.JSONObject
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 
 class NotifierListenerService : NotificationListenerService() {
 
     private val client = OkHttpClient()
-    private val prefsName = "TVNotifierPrefs"
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
-        val tvIp = prefs.getString("tvIp", "") ?: return
-        if (tvIp.isEmpty()) return
+        val packageName = sbn.packageName
+        val prefs = getSharedPreferences("SELECTED_APPS", MODE_PRIVATE)
+        val selectedApps = prefs.getStringSet("packages", emptySet()) ?: emptySet()
 
-        // --- FILTERING ---
-        // If you want to test EVERY notification, comment out the next 2 lines
-        val isAllowed = prefs.getBoolean(sbn.packageName, false)
-        if (!isAllowed) return 
-
-        val title = sbn.notification.extras.getString("android.title") ?: "New Alert"
-        val text = sbn.notification.extras.getCharSequence("android.text")?.toString() ?: ""
-
-        sendToTV(tvIp, title, text, sbn.packageName)
+        // Only send if the user selected this app
+        if (selectedApps.contains(packageName)) {
+            val extras = sbn.notification.extras
+            val title = extras.getString("android.title") ?: "New Notification"
+            val text = extras.getCharSequence("android.text")?.toString() ?: ""
+            
+            val tvIp = getSharedPreferences("TV_REFS", MODE_PRIVATE).getString("ip", "")
+            if (!tvIp.isNullOrEmpty()) {
+                sendToTV(tvIp, title, text, packageName)
+            }
+        }
     }
 
-    private fun sendToTV(tvIp: String, title: String, message: String, appPkg: String) {
-        val json = JSONObject().apply {
-            put("title", title)
-            put("message", message)
-            put("app", appPkg)
-            put("duration", 8)
-        }
+    private fun sendToTV(ip: String, title: String, message: String, appName: String) {
+        val json = """
+            {
+                "title": "$title",
+                "message": "$message",
+                "app": "$appName"
+            }
+        """.trimIndent()
 
-        val formBody = FormBody.Builder()
-            .add("postData", json.toString())
-            .build()
-
-        val request = Request.Builder()
-            .url("http://$tvIp:7979/notify")
-            .post(formBody)
-            .build()
+        val body = json.toRequestBody("application/json; charset=utf-8".toMediaType())
+        val request = Request.Builder().url("http://$ip:7979/notify").post(body).build()
 
         client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {}
-            override fun onResponse(call: Call, response: Response) { response.close() }
+            override fun onFailure(call: Call, e: IOException) {
+                Log.e("NotifierService", "Failed to send: ${e.message}")
+            }
+            override fun onResponse(call: Call, response: Response) {
+                response.close()
+            }
         })
     }
 }
