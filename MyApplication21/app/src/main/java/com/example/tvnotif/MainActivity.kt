@@ -1,21 +1,22 @@
 package com.example.tvnotif
+
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.widget.Button
-import android.widget.EditText
-import android.widget.Toast
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import okhttp3.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.*
 
 class MainActivity : AppCompatActivity() {
 
     private val client = OkHttpClient()
     private val prefsName = "TVNotifierPrefs"
+    private lateinit var tvLogs: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -25,11 +26,14 @@ class MainActivity : AppCompatActivity() {
         val btnSelectApps = findViewById<Button>(R.id.btnSelectApps)
         val btnSave = findViewById<Button>(R.id.btnSave)
         val btnTest = findViewById<Button>(R.id.btnTest)
+        val btnClearLogs = findViewById<Button>(R.id.btnClearLogs) // Add this button to your XML
+        tvLogs = findViewById(R.id.tvLogs)
 
         val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
         etTVIp.setText(prefs.getString("tvIp", ""))
 
-        // Select Apps button
+        logMessage("App Started. Check Notification Access!")
+
         btnSelectApps.setOnClickListener {
             val pm = packageManager
             val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
@@ -54,62 +58,59 @@ class MainActivity : AppCompatActivity() {
                         editor.putBoolean(packageNames[i], checkedItems[i])
                     }
                     editor.apply()
-                    Toast.makeText(this, "Apps saved", Toast.LENGTH_SHORT).show()
+                    logMessage("App filters updated.")
                 }
-                .setNegativeButton("Cancel", null)
                 .show()
         }
 
-        // Save TV IP
         btnSave.setOnClickListener {
             val tvIp = etTVIp.text.toString()
-            if (tvIp.isEmpty()) {
-                Toast.makeText(this, "Enter TV IP", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
             prefs.edit().putString("tvIp", tvIp).apply()
-            Toast.makeText(this, "TV IP saved", Toast.LENGTH_SHORT).show()
+            logMessage("TV IP saved: $tvIp")
         }
 
-        // Test button
         btnTest.setOnClickListener {
             val tvIp = etTVIp.text.toString()
             if (tvIp.isEmpty()) {
-                Toast.makeText(this, "Enter TV IP first", Toast.LENGTH_SHORT).show()
+                logMessage("ERROR: Enter TV IP first")
                 return@setOnClickListener
             }
-            sendToTV(tvIp, "Test Notification", "This is a test!", 5)
+            sendToTV(tvIp, "Test", "Hello from Phone!", "com.example.tvnotif")
         }
     }
 
-    private fun sendToTV(tvIp: String, title: String, message: String, duration: Long) {
+    fun logMessage(msg: String) {
+        runOnUiThread {
+            val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            tvLogs.append("[$time] $msg\n")
+        }
+    }
+
+    private fun sendToTV(tvIp: String, title: String, message: String, appName: String) {
         val json = JSONObject().apply {
             put("title", title)
             put("message", message)
-            put("duration", duration)
-            put("position", 0)
+            put("app", appName)
+            put("duration", 10)
         }
 
-        val body = json.toString()
-            .toRequestBody("application/json; charset=utf-8".toMediaType())
+        // IMPORTANT: TV expects "postData" key
+        val formBody = FormBody.Builder()
+            .add("postData", json.toString())
+            .build()
 
         val request = Request.Builder()
             .url("http://$tvIp:7979/notify")
-            .post(body)
+            .post(formBody)
             .build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                runOnUiThread {
-                    Toast.makeText(this@MainActivity, "Failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
+                logMessage("NETWORK FAIL: ${e.message}")
             }
-
             override fun onResponse(call: Call, response: Response) {
+                logMessage("SERVER SYNC: ${response.code}")
                 response.close()
-                runOnUiThread {
-                    Toast.makeText(this@MainActivity, "Sent!", Toast.LENGTH_SHORT).show()
-                }
             }
         })
     }
