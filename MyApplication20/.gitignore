@@ -1,0 +1,17 @@
+# Gradle / Android build files
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+
+# IDE files
+.idea/
+*.iml
+
+# Misc
+*.class
+*.dex
+*.jar
+*.keystore
+*.jks
