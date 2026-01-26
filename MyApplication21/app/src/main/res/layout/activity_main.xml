@@ -8,29 +8,69 @@
 
     <EditText
         android:id="@+id/etTVIp"
-        android:hint="TV IP"
+        android:hint="TV IP Address (e.g., 192.168.1.5)"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"/>
+        android:layout_height="wrap_content"
+        android:inputType="textUri"/>
 
     <Button
         android:id="@+id/btnSelectApps"
         android:text="Select Apps to Listen"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"/>
 
     <Button
         android:id="@+id/btnSave"
         android:text="Save Settings"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"/>
+        android:layout_marginTop="8dp"/>
 
     <Button
         android:id="@+id/btnTest"
         android:text="Send Test Notification"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"/>
+
+    <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"/>
+        android:text="Debug Logs:"
+        android:textStyle="bold"
+        android:layout_marginTop="24dp"
+        android:textColor="#555555"/>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="8dp"
+        android:background="#1C1C1C">
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+            
+            <TextView
+                android:id="@+id/tvLogs"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="12dp"
+                android:text="--- System Ready ---\n"
+                android:textColor="#00FF41" 
+                android:fontFamily="monospace"
+                android:textSize="12sp" />
+        </ScrollView>
+    </FrameLayout>
+
+    <Button
+        android:id="@+id/btnClearLogs"
+        android:text="Clear Logs"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        style="?android:attr/borderlessButtonStyle"/>
 
 </LinearLayout>
