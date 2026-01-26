@@ -6,6 +6,8 @@ import android.provider.Settings
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 
 class MainActivity : AppCompatActivity() {
@@ -17,6 +19,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        // Initialize Views
         etIp = findViewById(R.id.etTVIp)
         tvLogs = findViewById(R.id.tvLogs)
         val btnSave = findViewById<Button>(R.id.btnSave)
@@ -26,10 +29,11 @@ class MainActivity : AppCompatActivity() {
 
         // 1. Check for Notification Permission on Startup
         if (!isNotificationServiceEnabled()) {
-            logMessage("WARNING: Notification Access NOT enabled.")
+            logMessage("SYSTEM: Notification Access NOT enabled.")
             showPermissionDialog()
         }
 
+        // Load saved IP
         val prefs = getSharedPreferences("TV_REFS", MODE_PRIVATE)
         etIp.setText(prefs.getString("ip", ""))
 
@@ -37,41 +41,46 @@ class MainActivity : AppCompatActivity() {
             val ip = etIp.text.toString().trim()
             if (ip.isNotEmpty()) {
                 prefs.edit().putString("ip", ip).apply()
-                logMessage("IP Saved: $ip")
+                logMessage("SUCCESS: IP Saved ($ip)")
             } else {
-                logMessage("ERROR: Enter a valid IP")
+                logMessage("ERROR: IP cannot be empty")
             }
         }
 
         btnSelectApps.setOnClickListener {
-            logMessage("App selection clicked (Coming soon)")
+            logMessage("NAV: Opening App Selection...")
+            // Ensure you have created AppListActivity
+            val intent = Intent(this, AppListActivity::class.java)
+            startActivity(intent)
         }
 
         btnTest.setOnClickListener {
             val ip = etIp.text.toString().trim()
             if (ip.isEmpty()) {
-                logMessage("ERROR: Set IP first")
+                logMessage("ERROR: Please set TV IP first")
             } else {
                 sendTestNotification(ip)
             }
         }
 
-        btnClear.setOnClickListener { tvLogs.text = "--- Logs Cleared ---\n" }
+        btnClear.setOnClickListener {
+            tvLogs.text = "--- Logs Cleared ---\n"
+        }
     }
 
     private fun isNotificationServiceEnabled(): Boolean {
         val names = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
-        // This check is critical to prevent background crashes
         return names?.contains(packageName) == true
     }
 
     private fun showPermissionDialog() {
-        Toast.makeText(this, "Enable Notification Access for TV Notifier", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "Please enable Notification Access", Toast.LENGTH_LONG).show()
         val intent = Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
         startActivity(intent)
     }
 
     private fun logMessage(msg: String) {
+        // Crucial: This allows background network threads to update the UI
         runOnUiThread {
             tvLogs.append("\n> $msg")
         }
@@ -79,24 +88,42 @@ class MainActivity : AppCompatActivity() {
 
     private fun sendTestNotification(ip: String) {
         val client = OkHttpClient()
-        val formBody = FormBody.Builder()
-            .add("title", "Test")
-            .add("message", "Hello from your Phone!")
-            .build()
 
+        // 1. Prepare JSON (This matches what your TV app expects)
+        val json = """
+            {
+                "title": "Phone Test",
+                "message": "Notification sync is working!",
+                "app": "TV Notifier",
+                "duration": 10,
+                "position": 0
+            }
+        """.trimIndent()
+
+        // 2. Setup RequestBody as JSON
+        val mediaType = "application/json; charset=utf-8".toMediaType()
+        val body = json.toRequestBody(mediaType)
+
+        // 3. Create the Request
         val request = Request.Builder()
             .url("http://$ip:7979/notify")
-            .post(formBody)
+            .post(body)
             .build()
 
-        logMessage("Sending test to $ip...")
+        logMessage("SENDING: POST to $ip:7979...")
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                logMessage("NETWORK FAIL: ${e.message}")
+                logMessage("NETWORK ERROR: ${e.message}")
             }
+
             override fun onResponse(call: Call, response: Response) {
-                logMessage("SERVER SYNC: ${response.code}")
+                val code = response.code
+                if (code == 200) {
+                    logMessage("SUCCESS: TV received notification (200)")
+                } else {
+                    logMessage("TV REJECTED: Code $code (Check TV logs)")
+                }
                 response.close()
             }
         })
