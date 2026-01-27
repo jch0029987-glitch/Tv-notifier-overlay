@@ -11,6 +11,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import kotlin.concurrent.thread
+import android.util.Log
+
 
 class MainActivity : AppCompatActivity() {
 
