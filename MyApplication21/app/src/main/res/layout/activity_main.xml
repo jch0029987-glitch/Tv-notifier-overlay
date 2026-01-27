@@ -4,35 +4,80 @@
     android:orientation="vertical"
     android:padding="24dp"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="#F5F5F5">
 
     <EditText
         android:id="@+id/etTVIp"
         android:hint="TV IP Address (e.g., 192.168.1.5)"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:inputType="textUri"/>
+        android:inputType="textUri"
+        android:padding="12dp"/>
 
     <Button
         android:id="@+id/btnSelectApps"
-        android:text="Select Apps to Listen"
+        android:text="Select Apps to Sync"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"/>
+        android:layout_marginTop="16dp"
+        android:backgroundTint="#6200EE"
+        android:textColor="#FFFFFF"/>
 
     <Button
         android:id="@+id/btnSave"
-        android:text="Save Settings"
+        android:text="Save IP Address"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"/>
 
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#DDDDDD"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="16dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Manual Tests"
+        android:textStyle="bold"
+        android:textColor="#333333"/>
+
     <Button
         android:id="@+id/btnTest"
-        android:text="Send Test Notification"
+        android:text="Send Text Test"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp">
+
+        <Button
+            android:id="@+id/btnTestImage"
+            android:text="Test Image"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="4dp"
+            android:backgroundTint="#03DAC5"
+            android:textColor="#000000"/>
+
+        <Button
+            android:id="@+id/btnTestGif"
+            android:text="Test GIF"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:backgroundTint="#03DAC5"
+            android:textColor="#000000"/>
+    </LinearLayout>
 
     <TextView
         android:layout_width="wrap_content"
@@ -51,7 +96,8 @@
 
         <ScrollView
             android:layout_width="match_parent"
-            android:layout_height="match_parent">
+            android:layout_height="match_parent"
+            android:fadeScrollbars="false">
             
             <TextView
                 android:id="@+id/tvLogs"
