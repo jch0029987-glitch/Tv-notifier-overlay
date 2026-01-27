@@ -1,60 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/group_container"
-    android:layout_width="380dp"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="350dp"
     android:layout_height="wrap_content"
+    android:background="#E6212121"
     android:orientation="vertical"
-    android:background="@drawable/notification_background"
-    android:elevation="8dp">
+    android:padding="16dp">
 
-    <!-- Group header -->
-    <LinearLayout
+    <TextView
+        android:id="@+id/tv_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:background="#2D2D2D"
-        android:padding="12dp"
-        android:gravity="center_vertical">
+        android:textColor="#00E676"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:textAllCaps="true" />
 
-        <TextView
-            android:id="@+id/tv_group_icon"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:text="👥"
-            android:textSize="20sp"
-            android:gravity="center"
-            android:background="@drawable/circle_background"
-            android:layout_marginEnd="12dp"/>
-
-        <TextView
-            android:id="@+id/tv_group_name"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Group Name"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:maxLines="1"
-            android:ellipsize="end"/>
-
-        <TextView
-            android:id="@+id/tv_unread_count"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="3 new"
-            android:textColor="#4CAF50"
-            android:textSize="12sp"
-            android:visibility="gone"/>
-    </LinearLayout>
-
-    <!-- Messages list -->
-    <LinearLayout
-        android:id="@+id/messages_container"
+    <TextView
+        android:id="@+id/tv_message"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="12dp">
-        <!-- Messages added dynamically -->
-    </LinearLayout>
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:layout_marginTop="4dp" />
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:layout_marginTop="8dp">
+
+        <ImageView
+            android:id="@+id/iv_media"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:visibility="gone" />
+
+        <androidx.media3.ui.PlayerView
+            android:id="@+id/player_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone"
+            app:use_controller="false" />
+    </FrameLayout>
 </LinearLayout>
