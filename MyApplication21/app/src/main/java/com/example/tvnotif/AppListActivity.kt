@@ -42,8 +42,12 @@ class AppListActivity : AppCompatActivity() {
         val result = mutableListOf<AppInfo>()
 
         for (pkg in pm.getInstalledPackages(0)) {
-            val launchIntent = pm.getLaunchIntentForPackage(pkg.packageName) ?: continue
-            val label = pkg.applicationInfo.loadLabel(pm)?.toString() ?: continue
+            // Skip non-launchable apps
+            if (pm.getLaunchIntentForPackage(pkg.packageName) == null) continue
+
+            // ---- FIX: SAFE applicationInfo ACCESS ----
+            val appInfo = pkg.applicationInfo ?: continue
+            val label = appInfo.loadLabel(pm)?.toString() ?: continue
 
             result.add(
                 AppInfo(
@@ -63,8 +67,7 @@ class AppListActivity : AppCompatActivity() {
         var isSelected: Boolean
     )
 
-    inner class AppAdapter(private val apps: List<AppInfo>) :
-        BaseAdapter() {
+    inner class AppAdapter(private val apps: List<AppInfo>) : BaseAdapter() {
 
         override fun getCount() = apps.size
         override fun getItem(position: Int) = apps[position]
@@ -84,7 +87,7 @@ class AppListActivity : AppCompatActivity() {
             checkbox.setOnCheckedChangeListener(null)
             checkbox.isChecked = app.isSelected
 
-            // ---- SAFE ICON LOAD ----
+            // ---- SAFE ICON LOAD (BACKGROUND) ----
             thread {
                 val drawable = try {
                     packageManager.getApplicationIcon(app.packageName)
